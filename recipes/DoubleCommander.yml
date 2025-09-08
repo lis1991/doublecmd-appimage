@@ -6,11 +6,7 @@ categories: Utility;FileTools;
 terminal: false
 
 ingredients:
-  script: |
-    #!/bin/bash
-    set -e
-    cd ../scripts
-    ./download-deb.sh
+  script: cd ../scripts && ./download-deb.sh
 
   exclude:
     - usr/share/doc
