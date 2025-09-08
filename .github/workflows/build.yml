@@ -1,0 +1,67 @@
+name: 🧰 Build Double Commander AppImage
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl bsdtar binutils libglib2.0-0 libgl1-mesa-glx \
+            libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 libxcb-shape0 libxcb-xinput0 \
+            libfontconfig1 libsm6 libice6 libxrender1 libxext6 libx11-6 libxcb1 libxau6 \
+            libxdmcp6 libbsd0 libdrm2 libglapi-mesa libxcb-glx0 libxcb-dri2-0 libxcb-dri3-0 \
+            libxcb-present0 libxcb-sync1 libxshmfence1 libxxf86vm1 libexpat1 libxcb-xkb1 \
+            libxkbcommon0
+
+      - name: 🧪 Clone pkg2appimage
+        run: |
+          git clone https://github.com/AppImageCommunity/pkg2appimage
+          cd pkg2appimage && git checkout 8e522e5
+
+      - name: 🔨 Build Double Commander AppImage
+        run: |
+          cd pkg2appimage
+          ./pkg2appimage ../recipes/DoubleCommander.yml
+
+      - name: 📤 Upload AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DoubleCommander-AppImage
+          path: pkg2appimage/out/*.AppImage
+
+      - name: 🏷️ Extract Version
+        id: get_version
+        run: |
+          FILE=$(ls pkg2appimage/out/*.AppImage | head -1)
+          if [ -n "$FILE" ]; then
+            VERSION=$(echo "$FILE" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Не удалось определить версию"
+            exit 1
+          fi
+
+      - name: 🚀 Create GitHub Release
+        if: success() && github.event_name == 'schedule'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pkg2appimage/out/*.AppImage
+          tag_name: v${{ steps.get_version.outputs.version }}
+          body: "Автоматическая сборка Double Commander AppImage"
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
