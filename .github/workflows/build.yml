@@ -17,14 +17,47 @@ jobs:
 
       - name: 📦 Install System Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget curl bsdtar binutils libglib2.0-0 libgl1-mesa-glx \
-            libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
-            libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 libxcb-shape0 libxcb-xinput0 \
-            libfontconfig1 libsm6 libice6 libxrender1 libxext6 libx11-6 libxcb1 libxau6 \
-            libxdmcp6 libbsd0 libdrm2 libglapi-mesa libxcb-glx0 libxcb-dri2-0 libxcb-dri3-0 \
-            libxcb-present0 libxcb-sync1 libxshmfence1 libxxf86vm1 libexpat1 libxcb-xkb1 \
-            libxkbcommon0
+          # Обновляем индексы — с повторами при ошибке
+          sudo apt-get update --fix-missing
+
+          # Устанавливаем зависимости с флагом --no-install-recommends для избежания лишнего
+          sudo apt-get install -y --no-install-recommends \
+                wget curl bsdtar binutils \
+                libglib2.0-0 \
+                libgl1-mesa-glx \
+                libxkbcommon-x11-0 \
+                libxcb-icccm4 \
+                libxcb-image0 \
+                libxcb-keysyms1 \
+                libxcb-randr0 \
+                libxcb-render-util0 \
+                libxcb-xinerama0 \
+                libxcb-xfixes0 \
+                libxcb-shape0 \
+                libxcb-xinput0 \
+                libfontconfig1 \
+                libsm6 \
+                libice6 \
+                libxrender1 \
+                libxext6 \
+                libx11-6 \
+                libxcb1 \
+                libxau6 \
+                libxdmcp6 \
+                libbsd0 \
+                libdrm2 \
+                libglapi-mesa \
+                libxcb-glx0 \
+                libxcb-dri2-0 \
+                libxcb-dri3-0 \
+                libxcb-present0 \
+                libxcb-sync1 \
+                libxshmfence1 \
+                libxxf86vm1 \
+                libexpat1 \
+                libxcb-xkb1 \
+                libxkbcommon0
+
 
       - name: 🧪 Clone pkg2appimage
         run: |
