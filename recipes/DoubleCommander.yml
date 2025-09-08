@@ -1,0 +1,39 @@
+app: DoubleCommander
+exec: doublecmd
+icon: doublecmd
+name: DoubleCommander
+categories: Utility;FileTools;
+terminal: false
+
+ingredients:
+  script: |
+    #!/bin/bash
+    set -e
+
+    echo "🔍 Поиск последней версии Double Commander на SourceForge..."
+
+    PAGE_URL="https://sourceforge.net/projects/doublecmd/files/"
+    LATEST_LINK=$(curl -s "$PAGE_URL" | grep -o 'href="[^"]*doublecmd-qt6_[0-9.]*-1_amd64\.deb"' | head -1 | sed 's/href="//;s/"$//')
+
+    if [ -z "$LATEST_LINK" ]; then
+      echo "❌ Не удалось найти ссылку на последнюю версию"
+      exit 1
+    fi
+
+    DEB_URL="https://downloads.sourceforge.net$LATEST_LINK"
+    echo "📥 Скачиваем: $DEB_URL"
+
+    wget "$DEB_URL" -O doublecmd.deb
+    ar x doublecmd.deb
+    tar -xf data.tar.xz
+    rm -f doublecmd.deb control.tar.* data.tar.* debian-binary
+
+  exclude:
+    - usr/share/doc
+    - usr/share/man
+
+  desktop: usr/share/applications/doublecmd.desktop
+  icon: usr/share/icons/hicolor/256x256/apps/doublecmd.png
+
+AppDir:
+  path: ./
