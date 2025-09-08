@@ -57,7 +57,8 @@ jobs:
                 libxxf86vm1 \
                 libexpat1 \
                 libxcb-xkb1 \
-                libxkbcommon0
+                libxkbcommon0 \
+                desktop-file-utils
 
 
       - name: 🧪 Clone pkg2appimage
