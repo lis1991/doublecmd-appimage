@@ -23,7 +23,7 @@ jobs:
 
           # Устанавливаем зависимости с флагом --no-install-recommends для избежания лишнего
           sudo apt-get install -y --no-install-recommends \
-                wget curl bsdtar binutils \
+                wget curl libarchive-tools binutils \
                 libglib2.0-0 \
                 libgl1-mesa-glx \
                 libxkbcommon-x11-0 \
