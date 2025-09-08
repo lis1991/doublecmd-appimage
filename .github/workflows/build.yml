@@ -63,7 +63,6 @@ jobs:
       - name: 🧪 Clone pkg2appimage
         run: |
           git clone https://github.com/AppImageCommunity/pkg2appimage
-          cd pkg2appimage && git checkout main
 
       - name: 🔨 Build Double Commander AppImage
         run: |
