@@ -67,6 +67,7 @@ jobs:
 
       - name: 🔨 Build Double Commander AppImage
         run: |
+          export DEBUG=1  # ← Включить отладку!
           cd pkg2appimage
           ./pkg2appimage ../recipes/DoubleCommander.yml
 
