@@ -18,7 +18,15 @@ jobs:
       - name: 📦 Install System Dependencies
         run: |
           # Обновляем индексы — с повторами при ошибке
-          sudo apt-get update --fix-missing
+          for i in {1..3}; do
+            if sudo apt-get update --fix-missing; then
+              break
+            else
+              echo "⚠️ apt-get update failed, retry $i/3..."
+              sleep 5
+            fi
+          done
+          
 
           # Устанавливаем зависимости с флагом --no-install-recommends для избежания лишнего
           sudo apt-get install -y --no-install-recommends \
