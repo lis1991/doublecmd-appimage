@@ -131,14 +131,14 @@ jobs:
           path: |
             *.AppImage
             *doublecmd*.AppImage
-            Double_Commander*.AppImage
+            DoubleCommander*.AppImage
 
       - name: 🏷️ Extract Version (Optional)
         id: get_version
         run: |
           FILE=$(find . -name "*doublecmd*.AppImage" -type f 2>/dev/null | head -1)
           if [ -z "$FILE" ]; then
-            FILE=$(find . -name "Double_Commander*.AppImage" -type f 2>/dev/null | head -1)
+            FILE=$(find . -name "DoubleCommander*.AppImage" -type f 2>/dev/null | head -1)
           fi
           if [ -z "$FILE" ]; then
              echo "❌ AppImage файл не найден после сборки!"
