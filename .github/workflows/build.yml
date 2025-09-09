@@ -1,8 +1,8 @@
-name: 🧰 Build Double Commander AppImage
+name: 🧰 Build Double Commander AppImage with AppImageBuilder
 
 on:
   schedule:
-    - cron: '0 4 * * 0'
+    - cron: '0 4 * * 0'  # Каждое воскресенье в 04:00 UTC
   workflow_dispatch:
   push:
     branches:
@@ -11,77 +11,35 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
       - name: 📦 Install System Dependencies
         run: |
-          # Обновляем индексы 
-          sudo apt-get update --fix-missing
-          
+          sudo apt-get update
+          sudo apt-get install -y wget curl desktop-file-utils libglib2.0-0
 
-          # Устанавливаем зависимости с флагом --no-install-recommends для избежания лишнего
-          sudo apt-get install -y --no-install-recommends \
-                wget curl libarchive-tools binutils \
-                libglib2.0-0 \
-                libgl1-mesa-glx \
-                libxkbcommon-x11-0 \
-                libxcb-icccm4 \
-                libxcb-image0 \
-                libxcb-keysyms1 \
-                libxcb-randr0 \
-                libxcb-render-util0 \
-                libxcb-xinerama0 \
-                libxcb-xfixes0 \
-                libxcb-shape0 \
-                libxcb-xinput0 \
-                libfontconfig1 \
-                libsm6 \
-                libice6 \
-                libxrender1 \
-                libxext6 \
-                libx11-6 \
-                libxcb1 \
-                libxau6 \
-                libxdmcp6 \
-                libbsd0 \
-                libdrm2 \
-                libglapi-mesa \
-                libxcb-glx0 \
-                libxcb-dri2-0 \
-                libxcb-dri3-0 \
-                libxcb-present0 \
-                libxcb-sync1 \
-                libxshmfence1 \
-                libxxf86vm1 \
-                libexpat1 \
-                libxcb-xkb1 \
-                libxkbcommon0 \
-                desktop-file-utils
-
-
-      - name: 🧪 Clone pkg2appimage
+      - name: 📦 Установить AppImageBuilder
         run: |
-          git clone https://github.com/AppImageCommunity/pkg2appimage
+          sudo apt install -y python3-pip
+          pip3 install appimage-builder
 
       - name: 🔨 Build Double Commander AppImage
         run: |
-          export DEBUG=1  # ← Включить отладку!
-          chmod +x scripts/download-deb.sh
-          cd pkg2appimage
-          ./pkg2appimage ../recipes/DoubleCommander.yml
+          appimage-builder --recipe AppImageBuilder.yml --skip-test
 
       - name: 📤 Upload AppImage Artifact
         uses: actions/upload-artifact@v4
         with:
           name: DoubleCommander-AppImage
-          path: pkg2appimage/out/*.AppImage
+          path: Double_Commander-*-x86_64.AppImage
 
-      - name: 🏷️ Extract Version
+      - name: 🏷️ Extract Version (Optional)
         id: get_version
         run: |
-          FILE=$(ls pkg2appimage/out/*.AppImage | head -1)
+          FILE=$(ls Double_Commander-*-x86_64.AppImage 2>/dev/null | head -1)
           if [ -n "$FILE" ]; then
             VERSION=$(echo "$FILE" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
             echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -90,13 +48,13 @@ jobs:
             exit 1
           fi
 
-      - name: 🚀 Create GitHub Release
+      - name: 🚀 Create GitHub Release (Optional)
         if: success() && github.event_name == 'schedule'
         uses: softprops/action-gh-release@v2
         with:
-          files: pkg2appimage/out/*.AppImage
+          files: Double_Commander-*-x86_64.AppImage
           tag_name: v${{ steps.get_version.outputs.version }}
-          body: "Автоматическая сборка Double Commander AppImage"
+          body: "Автоматическая сборка Double Commander AppImage через AppImageBuilder"
           draft: false
           prerelease: false
         env:
