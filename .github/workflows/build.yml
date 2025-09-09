@@ -150,15 +150,11 @@ jobs:
           
           echo "✅ Найден AppImage файл: $FILE"
           echo "appimage_file=$FILE" >> $GITHUB_OUTPUT
-          
-          VERSION=$(basename "$FILE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          if [ -n "$VERSION" ]; then
-            echo "🔖 Извлечённая версия: $VERSION"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "⚠️ Не удалось извлечь версию из имени файла '$FILE'. Используется 'latest'."
-            echo "version=latest" >> $GITHUB_OUTPUT
-          fi
+
+          VERSION=$(date +"%Y%m%d%H%M%S")
+          echo "🔖 Установлена версия (дата/время): $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
 
       - name: 🚀 Create GitHub Release (Optional)
         #if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
