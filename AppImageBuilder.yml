@@ -23,8 +23,44 @@ script:
     wget "$LATEST_URL" -O doublecmd.tar.xz
 
   - tar -xf doublecmd.tar.xz --strip-components=1 -C AppDir/usr/bin
-  - cp AppDir/usr/bin/doublecmd.png AppDir/usr/share/icons/hicolor/256x256/apps/
-  - cp AppDir/usr/bin/doublecmd.desktop AppDir/usr/share/applications/
+
+  # --- Добавляем отладку для проверки структуры ---
+  - echo "🔍 Структура AppDir после распаковки:"
+  - find AppDir -type f \( -name "*.desktop" -o -name "*.png" \) | head -n 10 || echo "Файлы .desktop или .png не найдены напрямую"
+  # ------------------------------------------------
+
+  # Перемещаем/копируем иконку, если она есть в usr/bin
+  - |
+    if [ -f "AppDir/usr/bin/doublecmd.png" ]; then
+      echo "➡️ Перемещаем иконку из usr/bin"
+      mv AppDir/usr/bin/doublecmd.png AppDir/usr/share/icons/hicolor/256x256/apps/
+    elif [ -f "AppDir/usr/share/icons/hicolor/256x256/apps/doublecmd.png" ]; then
+      echo "✅ Иконка уже на месте"
+    else
+      echo "⚠️ Иконка не найдена, будет использована иконка по умолчанию позже"
+    fi
+
+  # Создаём .desktop файл, если он отсутствует или не на своём месте
+  - |
+    DESKTOP_FILE_PATH="AppDir/usr/share/applications/doublecmd.desktop"
+    if [ ! -f "$DESKTOP_FILE_PATH" ]; then
+      echo "✍️ Создаём doublecmd.desktop"
+      cat > "$DESKTOP_FILE_PATH" << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Double Commander
+Comment=Cross Platform Open Source file manager
+Exec=doublecmd %F
+Icon=doublecmd
+Terminal=false
+Categories=Utility;FileTools;FileManager;
+MimeType=inode/directory;
+StartupNotify=true
+EOF
+    else
+      echo "✅ .desktop файл уже существует"
+    fi
 
 AppDir:
   path: ./AppDir
@@ -32,41 +68,28 @@ AppDir:
   app_info:
     id: org.doublecmd.DoubleCommander
     name: Double Commander
-    icon: doublecmd
+    icon: doublecmd # Имя файла без .png
     version: latest
     exec: usr/bin/doublecmd
     exec_args: $@
 
+  # AppImageBuilder автоматически анализирует зависимости через ldd.
+  # Явное указание apt не обязательно, но можно оставить для контроля.
   apt:
     arch: amd64
     sources:
       - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy main universe
-    include:
-      - libgl1
-      - libx11-6
-      - libxext6
-      - libxrender1
-      - libxcb1
-      - libxkbcommon-x11-0
-      - libxcb-xinerama0
-      - libxcb-cursor0
-      - libxcb-keysyms1-0
-      - libxcb-randr0
-      - libxcb-xtest0
-      - libxcb-shape0
-      - libxcb-xfixes0
-      - libfreetype6
-      - libfontconfig1
-      - libicu70
-      - libpcre3
-      - zlib1g
+    # include:
+    #   - libgl1
+    #   - libx11-6
+    #   - и т.д.
 
   files:
-    exclude:
-      - usr/share/doc
-      - usr/share/man
-      - usr/share/locale
-      - usr/share/icons/hicolor/icon-theme.cache
+    # exclude не нужен, если нет лишних файлов или они не мешают
+    # exclude:
+    #   - usr/share/doc
+    #   - usr/share/man
+    #   - usr/share/locale
 
 AppImage:
   arch: x86_64
