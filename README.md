@@ -8,4 +8,5 @@
 
 ---
 
-Собрано с помощью [pkg2appimage](https://github.com/AppImageCommunity/pkg2appimage).
+Собрано с помощью [AppImageBuilder](https://appimage-builder.readthedocs.io/).
+Предыдущая версия использовала `pkg2appimage`.
