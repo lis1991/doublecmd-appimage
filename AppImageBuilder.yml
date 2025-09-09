@@ -52,10 +52,17 @@ AppDir:
     icon: doublecmd
     version: latest
     exec: usr/bin/doublecmd
+  # Исправлено: Добавлен обязательный ключ 'include:' даже с пустым списком
   apt:
     arch: amd64
     sources:
       - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy main universe
+    include: []
+    # Если в будущем потребуется добавить зависимости вручную, список будет таким:
+    # include:
+    #   - libgl1
+    #   - libx11-6
+    #   - и т.д.
 
 AppImage:
   arch: x86_64
