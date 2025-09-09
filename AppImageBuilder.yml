@@ -12,11 +12,14 @@ script:
   # Скачиваем и распаковываем последнюю версию Double Commander (QT6 x86_64)
   - echo "🔍 Поиск последней версии Double Commander через RSS..."
   - |
+    # Исправлено: Убраны лишние пробелы в URL внутри grep
     LATEST_URL=$(curl -s "https://sourceforge.net/projects/doublecmd/rss?path=/" | \
       grep -o '<link>https://sourceforge.net/projects/doublecmd/files/[^"]*doublecmd-[0-9.]*\.qt6\.x86_64\.tar\.xz/download' | \
       head -1 | sed 's/<link>//')
     if [ -z "$LATEST_URL" ]; then
       echo "❌ Не найден файл .qt6.x86_64.tar.xz в RSS"
+      # Для отладки можно вывести часть RSS
+      # curl -s "https://sourceforge.net/projects/doublecmd/rss?path=/" | head -n 20
       exit 1
     fi
     echo "📥 Скачиваем: $LATEST_URL"
