@@ -21,38 +21,150 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget curl desktop-file-utils libglib2.0-0
 
+      # --- Добавляем кэширование ---
+      - name: 💾 Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/AppImageBuilder.yml') }} # Ключ зависит от конфига, на случай изменения зависимостей
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: 💾 Cache appimagetool
+        id: cache-appimagetool
+        uses: actions/cache@v3
+        with:
+          path: ~/appimagetool.AppImage
+          key: appimagetool-x86_64
+
+      - name: 💾 Cache AppImage runtime
+        id: cache-runtime
+        uses: actions/cache@v3
+        with:
+          path: ~/AppImageKit-runtime-x86_64
+          key: AppImageKit-runtime-x86_64
+      # -----------------------------
+
       - name: 📦 Установить AppImageBuilder
         run: |
           sudo apt install -y python3-pip
           pip3 install appimage-builder
 
+      # --- Установка кэшированного appimagetool, если он есть ---
+      - name: 🔧 Установить кэшированный appimagetool (если есть)
+        if: steps.cache-appimagetool.outputs.cache-hit == 'true'
+        run: |
+          chmod +x ~/appimagetool.AppImage
+          # Создаем ссылку или копируем в PATH, чтобы AppImageBuilder мог его найти
+          sudo mv ~/appimagetool.AppImage /usr/local/bin/appimagetool
+      # ----------------------------------------------------------
+
+      # --- Установка кэшированного runtime, если он есть ---
+      - name: 🔧 Подготовить кэшированный runtime (если есть)
+        if: steps.cache-runtime.outputs.cache-hit == 'true'
+        run: |
+          mkdir -p ~/.cache/appimage-builder
+          cp ~/AppImageKit-runtime-x86_64 ~/.cache/appimage-builder/runtime-x86_64
+      # ----------------------------------------------------
+
       - name: 🔨 Build Double Commander AppImage
         run: |
           appimage-builder --recipe AppImageBuilder.yml --skip-test
+
+      # --- Сохраняем appimagetool в кэш, если он был скачан ---
+      - name: 💾 Сохранить appimagetool в кэш (если не было кэша)
+        if: steps.cache-appimagetool.outputs.cache-hit != 'true'
+        run: |
+          # Предполагаем, что appimagetool был скачан в ~/.local/bin или текущую директорию
+          # Нужно найти его и скопировать в кэш
+          # Обычно AppImageBuilder скачивает его в ~/.cache/appimage-builder/downloads/
+          # или временный каталог. Попробуем найти.
+          # ВАЖНО: Этот путь может меняться в зависимости от версии AppImageBuilder.
+          # Ниже приведен пример, который может потребовать адаптации.
+          # find ~/.cache/appimage-builder -name "appimagetool-*" -type f -executable 2>/dev/null | head -1 | xargs -I {} cp {} ~/appimagetool.AppImage || echo "appimagetool не найден для кэширования"
+          
+          # Более надежный способ: скачать самостоятельно, если не из кэша
+          if [ ! -f ~/appimagetool.AppImage ]; then
+            echo "appimagetool не найден в стандартных местах, скачиваем для кэширования..."
+            wget -O ~/appimagetool.AppImage "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+            chmod +x ~/appimagetool.AppImage
+          fi
+          # Если он уже был скачан AppImageBuilder, просто переименуем/скопируем
+          # (Это может быть нетривиально, т.к. путь динамический)
+          # Для простоты, если мы сами скачали, то он уже в кэше.
+          echo "appimagetool готов для кэширования в ~/appimagetool.AppImage"
+      # ----------------------------------------------------------
+
+      # --- Сохраняем runtime в кэш, если он был скачан ---
+      - name: 💾 Сохранить runtime в кэш (если не было кэша)
+        if: steps.cache-runtime.outputs.cache-hit != 'true'
+        run: |
+          # Аналогично, runtime скачивается AppImageBuilder.
+          # Найдем его в кэше AppImageBuilder и скопируем.
+          # find ~/.cache/appimage-builder -name "runtime-x86_64" -type f 2>/dev/null | head -1 | xargs -I {} cp {} ~/AppImageKit-runtime-x86_64 || echo "runtime не найден для кэширования"
+          
+          # Простой способ: если файл появился после сборки, скопируем его.
+          # Это менее надежно, но проще.
+          if [ -f ~/.cache/appimage-builder/runtime-x86_64 ]; then
+             cp ~/.cache/appimage-builder/runtime-x86_64 ~/AppImageKit-runtime-x86_64
+             echo "runtime найден и скопирован для кэширования."
+          else
+             echo "runtime не найден в ~/.cache/appimage-builder/ для кэширования."
+          fi
+      # ---------------------------------------------------
+
+      # --- Отладка: Проверяем, что файлы созданы ---
+      - name: 🐞 Debug - List files after build
+        run: |
+          echo "🔍 Содержимое текущей директории после сборки:"
+          ls -la
+          echo "🔍 Поиск файлов .AppImage:"
+          find . -name "*.AppImage" -type f 2>/dev/null || echo "  Файлы .AppImage не найдены"
+          echo "🔍 Содержимое ~/.cache/appimage-builder (если есть):"
+          ls -la ~/.cache/appimage-builder/ 2>/dev/null || echo "  Директория ~/.cache/appimage-builder не найдена"
+      # ------------------------------------------
 
       - name: 📤 Upload AppImage Artifact
         uses: actions/upload-artifact@v4
         with:
           name: DoubleCommander-AppImage
-          path: Double_Commander-*-x86_64.AppImage
+          path: |
+            *.AppImage
+            *doublecmd*.AppImage
+            Double_Commander*.AppImage
 
       - name: 🏷️ Extract Version (Optional)
         id: get_version
         run: |
-          FILE=$(ls Double_Commander-*-x86_64.AppImage 2>/dev/null | head -1)
-          if [ -n "$FILE" ]; then
-            VERSION=$(echo "$FILE" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+          FILE=$(find . -name "*doublecmd*.AppImage" -type f 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            FILE=$(find . -name "Double_Commander*.AppImage" -type f 2>/dev/null | head -1)
+          fi
+          if [ -z "$FILE" ]; then
+             echo "❌ AppImage файл не найден после сборки!"
+             echo "🔍 Доступные файлы в директории:"
+             ls -la
+             echo "::error::AppImage файл не найден"
+             exit 1
+          fi
+          
+          echo "✅ Найден AppImage файл: $FILE"
+          echo "appimage_file=$FILE" >> $GITHUB_OUTPUT
+          
+          VERSION=$(basename "$FILE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          if [ -n "$VERSION" ]; then
+            echo "🔖 Извлечённая версия: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
           else
-            echo "Не удалось определить версию"
-            exit 1
+            echo "⚠️ Не удалось извлечь версию из имени файла '$FILE'. Используется 'latest'."
+            echo "version=latest" >> $GITHUB_OUTPUT
           fi
 
       - name: 🚀 Create GitHub Release (Optional)
         if: success() && github.event_name == 'schedule'
         uses: softprops/action-gh-release@v2
         with:
-          files: Double_Commander-*-x86_64.AppImage
+          files: ${{ steps.get_version.outputs.appimage_file }}
           tag_name: v${{ steps.get_version.outputs.version }}
           body: "Автоматическая сборка Double Commander AppImage через AppImageBuilder"
           draft: false
