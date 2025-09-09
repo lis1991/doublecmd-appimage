@@ -11,59 +11,76 @@ script:
 
   # Скачиваем и распаковываем последнюю версию Double Commander (QT6 x86_64)
   - echo "🔍 Поиск последней версии Double Commander через RSS..."
-  - |
-    # Исправлено: Убраны лишние пробелы в URL внутри grep
-    LATEST_URL=$(curl -s "https://sourceforge.net/projects/doublecmd/rss?path=/" | \
-      grep -o '<link>https://sourceforge.net/projects/doublecmd/files/[^"]*doublecmd-[0-9.]*\.qt6\.x86_64\.tar\.xz/download' | \
-      head -1 | sed 's/<link>//')
+  # ВАЖНО: В YAML для многострочных команд с сохранением разрывов строк используем ">"
+  # и строго выравниваем последующие строки.
+  - >
+    LATEST_URL=$(curl -s "https://sourceforge.net/projects/doublecmd/rss?path=/" |
+    grep -o '<link>https://sourceforge.net/projects/doublecmd/files/[^"]*doublecmd-[0-9.]*\.qt6\.x86_64\.tar\.xz/download' |
+    head -1 | sed 's/<link>//')
+
     if [ -z "$LATEST_URL" ]; then
       echo "❌ Не найден файл .qt6.x86_64.tar.xz в RSS"
-      # Для отладки можно вывести часть RSS
+      # Отладка: можно временно раскомментировать для просмотра части ответа
       # curl -s "https://sourceforge.net/projects/doublecmd/rss?path=/" | head -n 20
       exit 1
     fi
     echo "📥 Скачиваем: $LATEST_URL"
     wget "$LATEST_URL" -O doublecmd.tar.xz
 
+  # Распаковываем. --strip-components=1 удаляет первый уровень каталогов из архива.
   - tar -xf doublecmd.tar.xz --strip-components=1 -C AppDir/usr/bin
 
-  # --- Добавляем отладку для проверки структуры ---
-  - echo "🔍 Структура AppDir после распаковки:"
-  - find AppDir -type f \( -name "*.desktop" -o -name "*.png" \) | head -n 10 || echo "Файлы .desktop или .png не найдены напрямую"
-  # ------------------------------------------------
+  # --- Отладка: Проверяем структуру после распаковки ---
+  - echo "🔍 Структура AppDir после распаковки (ищем .desktop и .png):"
+  - find AppDir -type f \( -name "doublecmd.desktop" -o -name "doublecmd.png" \) 2>/dev/null || echo "  Файлы .desktop или .png не найдены напрямую find'ом"
+  # -----------------------------------------------------
 
-  # Перемещаем/копируем иконку, если она есть в usr/bin
+  # Обрабатываем иконку
+  # Сценарий 1: Иконка распаковалась напрямую в usr/share/icons (идеальный случай)
   - |
-    if [ -f "AppDir/usr/bin/doublecmd.png" ]; then
-      echo "➡️ Перемещаем иконку из usr/bin"
-      mv AppDir/usr/bin/doublecmd.png AppDir/usr/share/icons/hicolor/256x256/apps/
-    elif [ -f "AppDir/usr/share/icons/hicolor/256x256/apps/doublecmd.png" ]; then
-      echo "✅ Иконка уже на месте"
+    if [ -f "AppDir/usr/share/icons/hicolor/256x256/apps/doublecmd.png" ]; then
+      echo "✅ Иконка уже на месте в usr/share/icons/..."
+    # Сценарий 2: Иконка распаковалась в usr/bin (нужно переместить)
+    elif [ -f "AppDir/usr/bin/doublecmd.png" ]; then
+      echo "➡️ Перемещаем иконку из usr/bin в стандартное место"
+      mv "AppDir/usr/bin/doublecmd.png" "AppDir/usr/share/icons/hicolor/256x256/apps/"
     else
-      echo "⚠️ Иконка не найдена, будет использована иконка по умолчанию позже"
+      echo "⚠️ Иконка doublecmd.png не найдена после распаковки. AppImage может не отображать иконку."
     fi
 
-  # Создаём .desktop файл, если он отсутствует или не на своём месте
+  # Обрабатываем .desktop файл
+  # Сценарий 1: .desktop файл распаковался напрямую в usr/share/applications (идеальный случай)
   - |
-    DESKTOP_FILE_PATH="AppDir/usr/share/applications/doublecmd.desktop"
-    if [ ! -f "$DESKTOP_FILE_PATH" ]; then
-      echo "✍️ Создаём doublecmd.desktop"
-      cat > "$DESKTOP_FILE_PATH" << 'EOF'
+    if [ -f "AppDir/usr/share/applications/doublecmd.desktop" ]; then
+      echo "✅ .desktop файл уже на месте в usr/share/applications/"
+      # Проверим, корректно ли указан Exec в существующем файле.
+      # AppImageBuilder ожидает, что исполняемый файл будет просто 'doublecmd'
+      # Если в .desktop указан полный путь, это может быть проблемой.
+      # Для простоты, мы его не трогаем, предполагая, что он корректен.
+    # Сценарий 2: .desktop файл распаковался в usr/bin (нужно переместить)
+    elif [ -f "AppDir/usr/bin/doublecmd.desktop" ]; then
+      echo "➡️ Перемещаем .desktop файл из usr/bin в стандартное место"
+      mv "AppDir/usr/bin/doublecmd.desktop" "AppDir/usr/share/applications/"
+    # Сценарий 3: .desktop файл отсутствует - создаём его
+    else
+      echo "✍️ Создаём doublecmd.desktop, так как он не был найден"
+      cat > "AppDir/usr/share/applications/doublecmd.desktop" << 'EOF'
 [Desktop Entry]
 Version=1.0
 Type=Application
 Name=Double Commander
 Comment=Cross Platform Open Source file manager
+# Важно: Exec должен указывать на бинарник относительно корня AppDir
 Exec=doublecmd %F
+# Icon тоже должен быть без пути и расширения
 Icon=doublecmd
 Terminal=false
 Categories=Utility;FileTools;FileManager;
 MimeType=inode/directory;
 StartupNotify=true
 EOF
-    else
-      echo "✅ .desktop файл уже существует"
     fi
+
 
 AppDir:
   path: ./AppDir
@@ -71,30 +88,37 @@ AppDir:
   app_info:
     id: org.doublecmd.DoubleCommander
     name: Double Commander
-    icon: doublecmd # Имя файла без .png
+    # Icon указывается без пути и расширения, предполагается, что файл
+    # doublecmd.png будет в usr/share/icons/... или аналогичном каталоге.
+    icon: doublecmd
     version: latest
+    # Exec путь относительно AppDir. AppImageBuilder сам добавит usr/bin в $PATH.
+    # Если бинарник лежит в usr/bin/doublecmd, то правильно указать так:
     exec: usr/bin/doublecmd
+    # exec: doublecmd # Этот вариант может работать, если usr/bin в PATH внутри среды упаковки
     exec_args: $@
 
   # AppImageBuilder автоматически анализирует зависимости через ldd.
-  # Явное указание apt не обязательно, но можно оставить для контроля.
+  # Явное указание apt не обязательно, но можно оставить для контроля или добавления недостающих пакетов.
   apt:
     arch: amd64
     sources:
+      # Используем jammy, так как runner ubuntu-22.04
       - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy main universe
-    # include:
+    # include: # Раскомментируйте, если нужно явно включить пакеты
     #   - libgl1
     #   - libx11-6
     #   - и т.д.
 
   files:
-    # exclude не нужен, если нет лишних файлов или они не мешают
-    # exclude:
-    #   - usr/share/doc
-    #   - usr/share/man
-    #   - usr/share/locale
+    # Исключаем ненужные файлы для уменьшения размера AppImage
+    exclude:
+      - usr/share/doc
+      - usr/share/man
+      - usr/share/locale
+      # Добавьте другие, если найдутся
 
 AppImage:
   arch: x86_64
-  update-information: guess
-  sign-key: None
+  # update-information: guess # Раскомментируйте, если настроите обновления
+  sign-key: None # Подпись отключена
