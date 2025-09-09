@@ -9,4 +9,3 @@
 ---
 
 Собрано с помощью [AppImageBuilder](https://appimage-builder.readthedocs.io/).
-Предыдущая версия использовала `pkg2appimage`.
