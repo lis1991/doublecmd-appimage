@@ -1,7 +1,7 @@
 app: DoubleCommander
 exec: doublecmd
 icon: doublecmd
-name: Double Commander
+name: DoubleCommander
 categories: Utility;FileTools;
 terminal: false
 
