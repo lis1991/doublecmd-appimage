@@ -48,7 +48,7 @@ AppDir:
   path: ./AppDir
   app_info:
     id: org.doublecmd.DoubleCommander
-    name: Double Commander
+    name: DoubleCommander
     icon: doublecmd
     version: latest
     exec: usr/bin/doublecmd
