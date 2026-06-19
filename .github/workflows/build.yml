@@ -10,7 +10,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm64
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
 
@@ -28,23 +35,23 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/AppImageBuilder.yml') }} # Ключ зависит от конфига, на случай изменения зависимостей
+          key: ${{ runner.os }}-${{ matrix.arch }}-pip-${{ hashFiles('**/AppImageBuilder.yml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-${{ matrix.arch }}-pip-
 
       - name: 💾 Cache appimagetool
         id: cache-appimagetool
         uses: actions/cache@v3
         with:
           path: ~/appimagetool.AppImage
-          key: appimagetool-x86_64
+          key: appimagetool-${{ matrix.arch }}
 
       - name: 💾 Cache AppImage runtime
         id: cache-runtime
         uses: actions/cache@v3
         with:
-          path: ~/AppImageKit-runtime-x86_64
-          key: AppImageKit-runtime-x86_64
+          path: ~/AppImageKit-runtime-${{ matrix.arch }}
+          key: AppImageKit-runtime-${{ matrix.arch }}
       # -----------------------------
 
       - name: 📦 Установить AppImageBuilder
@@ -57,7 +64,6 @@ jobs:
         if: steps.cache-appimagetool.outputs.cache-hit == 'true'
         run: |
           chmod +x ~/appimagetool.AppImage
-          # Создаем ссылку или копируем в PATH, чтобы AppImageBuilder мог его найти
           sudo mv ~/appimagetool.AppImage /usr/local/bin/appimagetool
       # ----------------------------------------------------------
 
@@ -66,7 +72,7 @@ jobs:
         if: steps.cache-runtime.outputs.cache-hit == 'true'
         run: |
           mkdir -p ~/.cache/appimage-builder
-          cp ~/AppImageKit-runtime-x86_64 ~/.cache/appimage-builder/runtime-x86_64
+          cp ~/AppImageKit-runtime-${{ matrix.arch }} ~/.cache/appimage-builder/runtime-${{ matrix.arch }}
       # ----------------------------------------------------
 
       - name: 🔨 Build Double Commander AppImage
@@ -77,23 +83,11 @@ jobs:
       - name: 💾 Сохранить appimagetool в кэш (если не было кэша)
         if: steps.cache-appimagetool.outputs.cache-hit != 'true'
         run: |
-          # Предполагаем, что appimagetool был скачан в ~/.local/bin или текущую директорию
-          # Нужно найти его и скопировать в кэш
-          # Обычно AppImageBuilder скачивает его в ~/.cache/appimage-builder/downloads/
-          # или временный каталог. Попробуем найти.
-          # ВАЖНО: Этот путь может меняться в зависимости от версии AppImageBuilder.
-          # Ниже приведен пример, который может потребовать адаптации.
-          # find ~/.cache/appimage-builder -name "appimagetool-*" -type f -executable 2>/dev/null | head -1 | xargs -I {} cp {} ~/appimagetool.AppImage || echo "appimagetool не найден для кэширования"
-          
-          # Более надежный способ: скачать самостоятельно, если не из кэша
           if [ ! -f ~/appimagetool.AppImage ]; then
             echo "appimagetool не найден в стандартных местах, скачиваем для кэширования..."
-            wget -O ~/appimagetool.AppImage "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+            wget -O ~/appimagetool.AppImage "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage"
             chmod +x ~/appimagetool.AppImage
           fi
-          # Если он уже был скачан AppImageBuilder, просто переименуем/скопируем
-          # (Это может быть нетривиально, т.к. путь динамический)
-          # Для простоты, если мы сами скачали, то он уже в кэше.
           echo "appimagetool готов для кэширования в ~/appimagetool.AppImage"
       # ----------------------------------------------------------
 
@@ -101,14 +95,8 @@ jobs:
       - name: 💾 Сохранить runtime в кэш (если не было кэша)
         if: steps.cache-runtime.outputs.cache-hit != 'true'
         run: |
-          # Аналогично, runtime скачивается AppImageBuilder.
-          # Найдем его в кэше AppImageBuilder и скопируем.
-          # find ~/.cache/appimage-builder -name "runtime-x86_64" -type f 2>/dev/null | head -1 | xargs -I {} cp {} ~/AppImageKit-runtime-x86_64 || echo "runtime не найден для кэширования"
-          
-          # Простой способ: если файл появился после сборки, скопируем его.
-          # Это менее надежно, но проще.
-          if [ -f ~/.cache/appimage-builder/runtime-x86_64 ]; then
-             cp ~/.cache/appimage-builder/runtime-x86_64 ~/AppImageKit-runtime-x86_64
+          if [ -f ~/.cache/appimage-builder/runtime-${{ matrix.arch }} ]; then
+             cp ~/.cache/appimage-builder/runtime-${{ matrix.arch }} ~/AppImageKit-runtime-${{ matrix.arch }}
              echo "runtime найден и скопирован для кэширования."
           else
              echo "runtime не найден в ~/.cache/appimage-builder/ для кэширования."
@@ -129,7 +117,7 @@ jobs:
       - name: 📤 Upload AppImage Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DoubleCommander-AppImage
+          name: DoubleCommander-AppImage-${{ matrix.arch }}
           path: |
             *.AppImage
             *doublecmd*.AppImage
@@ -149,7 +137,7 @@ jobs:
              echo "::error::AppImage файл не найден"
              exit 1
           fi
-          
+
           echo "✅ Найден AppImage файл: $FILE"
           echo "appimage_file=$FILE" >> $GITHUB_OUTPUT
 
@@ -157,15 +145,13 @@ jobs:
           echo "🔖 Установлена версия (дата/время): $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-
-      - name: 🚀 Create GitHub Release (Optional)
-        #if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      - name: 🚀 Create GitHub Release
         if: success()
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.get_version.outputs.appimage_file }}
-          tag_name: v${{ steps.get_version.outputs.version }}
-          body: "Автоматическая сборка Double Commander AppImage через AppImageBuilder"
+          tag_name: v${{ steps.get_version.outputs.version }}-${{ matrix.arch }}
+          body: "Автоматическая сборка Double Commander AppImage через AppImageBuilder (${{ matrix.arch }})"
           draft: false
           prerelease: false
         env:
