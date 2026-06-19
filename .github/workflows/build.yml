@@ -32,7 +32,7 @@ jobs:
 
       # --- Добавляем кэширование ---
       - name: 💾 Cache pip
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-${{ matrix.arch }}-pip-${{ hashFiles('**/AppImageBuilder.yml') }}
@@ -41,14 +41,14 @@ jobs:
 
       - name: 💾 Cache appimagetool
         id: cache-appimagetool
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/appimagetool.AppImage
           key: appimagetool-${{ matrix.arch }}
 
       - name: 💾 Cache AppImage runtime
         id: cache-runtime
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/AppImageKit-runtime-${{ matrix.arch }}
           key: AppImageKit-runtime-${{ matrix.arch }}
@@ -123,7 +123,7 @@ jobs:
             *doublecmd*.AppImage
             DoubleCommander*.AppImage
 
-      - name: 🏷️ Extract Version (Optional)
+      - name: 🏷️ Extract Version
         id: get_version
         run: |
           FILE=$(find . -name "*doublecmd*.AppImage" -type f 2>/dev/null | head -1)
