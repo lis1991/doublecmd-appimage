@@ -11,26 +11,34 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: x86_64
-            runner: ubuntu-22.04
+            apt_arch: amd64
+            qemu: false
           - arch: aarch64
-            runner: ubuntu-24.04-arm64
-    runs-on: ${{ matrix.runner }}
+            apt_arch: arm64
+            qemu: true
+    runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
+
+      - name: 🔧 Set up QEMU (aarch64 only)
+        if: matrix.qemu == true
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: 📦 Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y wget curl desktop-file-utils libglib2.0-0
 
-      # --- Добавляем кэширование ---
       - name: 💾 Cache pip
         uses: actions/cache@v4
         with:
@@ -52,106 +60,143 @@ jobs:
         with:
           path: ~/AppImageKit-runtime-${{ matrix.arch }}
           key: AppImageKit-runtime-${{ matrix.arch }}
-      # -----------------------------
 
       - name: 📦 Установить AppImageBuilder
         run: |
           sudo apt install -y python3-pip
           pip3 install appimage-builder
 
-      # --- Установка кэшированного appimagetool, если он есть ---
       - name: 🔧 Установить кэшированный appimagetool (если есть)
         if: steps.cache-appimagetool.outputs.cache-hit == 'true'
         run: |
           chmod +x ~/appimagetool.AppImage
           sudo mv ~/appimagetool.AppImage /usr/local/bin/appimagetool
-      # ----------------------------------------------------------
 
-      # --- Установка кэшированного runtime, если он есть ---
       - name: 🔧 Подготовить кэшированный runtime (если есть)
         if: steps.cache-runtime.outputs.cache-hit == 'true'
         run: |
           mkdir -p ~/.cache/appimage-builder
           cp ~/AppImageKit-runtime-${{ matrix.arch }} ~/.cache/appimage-builder/runtime-${{ matrix.arch }}
-      # ----------------------------------------------------
+
+      - name: 🔍 Определить версию Double Commander
+        id: get_dc_version
+        run: |
+          LATEST_URL=$(curl -s "https://sourceforge.net/projects/doublecmd/rss?path=/" | \
+            grep -o '<link>https://sourceforge.net/projects/doublecmd/files/[^"]*doublecmd-[0-9.]*\.qt6\.x86_64\.tar\.xz/download' | \
+            head -1 | sed 's/<link>//')
+          if [ -z "$LATEST_URL" ]; then
+            echo "❌ Не удалось получить URL из RSS"
+            exit 1
+          fi
+          DC_VERSION=$(echo "$LATEST_URL" | grep -oP 'doublecmd-\K[0-9]+\.[0-9]+\.[0-9]+')
+          echo "✅ Версия Double Commander: $DC_VERSION"
+          echo "dc_version=$DC_VERSION" >> $GITHUB_OUTPUT
+
+      - name: 🛠️ Подготовить AppImageBuilder.yml для текущей архитектуры
+        run: |
+          cp AppImageBuilder.yml AppImageBuilder-${{ matrix.arch }}.yml
+          # Версия: latest → реальная
+          sed -i "s/version: latest/version: ${{ steps.get_dc_version.outputs.dc_version }}/" AppImageBuilder-${{ matrix.arch }}.yml
+          # apt arch
+          sed -i "s/arch: amd64/arch: ${{ matrix.apt_arch }}/" AppImageBuilder-${{ matrix.arch }}.yml
+          # AppImage arch
+          sed -i "s/arch: x86_64/arch: ${{ matrix.arch }}/" AppImageBuilder-${{ matrix.arch }}.yml
+          # Для aarch64: паттерн скачивания и apt source
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            sed -i "s/qt6\.x86_64/qt6.aarch64/g" AppImageBuilder-${{ matrix.arch }}.yml
+            sed -i "s|http://archive.ubuntu.com/ubuntu/|http://ports.ubuntu.com/ubuntu-ports/|g" AppImageBuilder-${{ matrix.arch }}.yml
+          fi
+          echo "📄 Итоговый конфиг:"
+          cat AppImageBuilder-${{ matrix.arch }}.yml
 
       - name: 🔨 Build Double Commander AppImage
         run: |
-          appimage-builder --recipe AppImageBuilder.yml --skip-test
+          appimage-builder --recipe AppImageBuilder-${{ matrix.arch }}.yml --skip-test
 
-      # --- Сохраняем appimagetool в кэш, если он был скачан ---
-      - name: 💾 Сохранить appimagetool в кэш (если не было кэша)
+      - name: 💾 Сохранить appimagetool в кэш
         if: steps.cache-appimagetool.outputs.cache-hit != 'true'
         run: |
           if [ ! -f ~/appimagetool.AppImage ]; then
-            echo "appimagetool не найден в стандартных местах, скачиваем для кэширования..."
             wget -O ~/appimagetool.AppImage "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage"
             chmod +x ~/appimagetool.AppImage
           fi
-          echo "appimagetool готов для кэширования в ~/appimagetool.AppImage"
-      # ----------------------------------------------------------
 
-      # --- Сохраняем runtime в кэш, если он был скачан ---
-      - name: 💾 Сохранить runtime в кэш (если не было кэша)
+      - name: 💾 Сохранить runtime в кэш
         if: steps.cache-runtime.outputs.cache-hit != 'true'
         run: |
           if [ -f ~/.cache/appimage-builder/runtime-${{ matrix.arch }} ]; then
-             cp ~/.cache/appimage-builder/runtime-${{ matrix.arch }} ~/AppImageKit-runtime-${{ matrix.arch }}
-             echo "runtime найден и скопирован для кэширования."
-          else
-             echo "runtime не найден в ~/.cache/appimage-builder/ для кэширования."
+            cp ~/.cache/appimage-builder/runtime-${{ matrix.arch }} ~/AppImageKit-runtime-${{ matrix.arch }}
           fi
-      # ---------------------------------------------------
 
-      # --- Отладка: Проверяем, что файлы созданы ---
       - name: 🐞 Debug - List files after build
         run: |
-          echo "🔍 Содержимое текущей директории после сборки:"
           ls -la
-          echo "🔍 Поиск файлов .AppImage:"
-          find . -name "*.AppImage" -type f 2>/dev/null || echo "  Файлы .AppImage не найдены"
-          echo "🔍 Содержимое ~/.cache/appimage-builder (если есть):"
-          ls -la ~/.cache/appimage-builder/ 2>/dev/null || echo "  Директория ~/.cache/appimage-builder не найдена"
-      # ------------------------------------------
+          find . -name "*.AppImage" -type f 2>/dev/null || echo "Файлы .AppImage не найдены"
 
       - name: 📤 Upload AppImage Artifact
         uses: actions/upload-artifact@v4
         with:
           name: DoubleCommander-AppImage-${{ matrix.arch }}
-          path: |
-            *.AppImage
-            *doublecmd*.AppImage
-            DoubleCommander*.AppImage
+          path: "*.AppImage"
 
-      - name: 🏷️ Extract Version
-        id: get_version
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: 📥 Download x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DoubleCommander-AppImage-x86_64
+          path: ./artifacts/x86_64
+
+      - name: 📥 Download aarch64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DoubleCommander-AppImage-aarch64
+          path: ./artifacts/aarch64
+
+      - name: 🔖 Prepare release files and notes
+        id: prep
         run: |
-          FILE=$(find . -name "*doublecmd*.AppImage" -type f 2>/dev/null | head -1)
-          if [ -z "$FILE" ]; then
-            FILE=$(find . -name "DoubleCommander*.AppImage" -type f 2>/dev/null | head -1)
-          fi
-          if [ -z "$FILE" ]; then
-             echo "❌ AppImage файл не найден после сборки!"
-             echo "🔍 Доступные файлы в директории:"
-             ls -la
-             echo "::error::AppImage файл не найден"
-             exit 1
-          fi
+          FILE_X86=$(find ./artifacts/x86_64 -name "*.AppImage" | head -1)
+          FILE_ARM=$(find ./artifacts/aarch64 -name "*.AppImage" | head -1)
 
-          echo "✅ Найден AppImage файл: $FILE"
-          echo "appimage_file=$FILE" >> $GITHUB_OUTPUT
+          echo "file_x86=$FILE_X86" >> $GITHUB_OUTPUT
+          echo "file_arm=$FILE_ARM" >> $GITHUB_OUTPUT
 
-          VERSION=$(date +"%Y%m%d%H%M%S")
-          echo "🔖 Установлена версия (дата/время): $VERSION"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Версия DC из имени файла: DoubleCommander-0.9.10-x86_64.AppImage
+          DC_VERSION=$(basename "$FILE_X86" | grep -oP '(?<=DoubleCommander-)[0-9]+\.[0-9]+\.[0-9]+')
+          echo "dc_version=$DC_VERSION" >> $GITHUB_OUTPUT
+
+          NAME_X86=$(basename "$FILE_X86")
+          NAME_ARM=$(basename "$FILE_ARM")
+          SIZE_X86=$(du -h "$FILE_X86" | cut -f1)
+          SIZE_ARM=$(du -h "$FILE_ARM" | cut -f1)
+
+          cat >> $GITHUB_OUTPUT << EOF
+          notes<<NOTES
+          ## 📦 Double Commander $DC_VERSION — AppImage
+
+          | Файл | Архитектура | Размер |
+          |---|---|---|
+          | $NAME_X86 | x86\_64 (amd64) | $SIZE_X86 |
+          | $NAME_ARM | aarch64 (arm64) | $SIZE_ARM |
+
+          > Сборка выполнена автоматически через GitHub Actions + AppImageBuilder.
+          NOTES
+          EOF
 
       - name: 🚀 Create GitHub Release
-        if: success()
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.get_version.outputs.appimage_file }}
-          tag_name: v${{ steps.get_version.outputs.version }}-${{ matrix.arch }}
-          body: "Автоматическая сборка Double Commander AppImage через AppImageBuilder (${{ matrix.arch }})"
+          tag_name: v${{ steps.prep.outputs.dc_version }}
+          files: |
+            ${{ steps.prep.outputs.file_x86 }}
+            ${{ steps.prep.outputs.file_arm }}
+          body: ${{ steps.prep.outputs.notes }}
           draft: false
           prerelease: false
         env:
