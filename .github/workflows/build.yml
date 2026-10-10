@@ -14,11 +14,56 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: x86_64
+          # GTK2
+          - toolkit: gtk2
+            arch: x86_64
             apt_arch: amd64
+            appimage_arch: x86_64
+            appimagetool_arch: x86_64
             qemu: false
-          - arch: aarch64
+          - toolkit: gtk2
+            arch: i386
+            apt_arch: i386
+            appimage_arch: i686
+            appimagetool_arch: x86_64
+            qemu: false
+          - toolkit: gtk2
+            arch: aarch64
             apt_arch: arm64
+            appimage_arch: aarch64
+            appimagetool_arch: aarch64
+            qemu: true
+          # Qt5
+          - toolkit: qt
+            arch: x86_64
+            apt_arch: amd64
+            appimage_arch: x86_64
+            appimagetool_arch: x86_64
+            qemu: false
+          - toolkit: qt
+            arch: i386
+            apt_arch: i386
+            appimage_arch: i686
+            appimagetool_arch: x86_64
+            qemu: false
+          - toolkit: qt
+            arch: aarch64
+            apt_arch: arm64
+            appimage_arch: aarch64
+            appimagetool_arch: aarch64
+            qemu: true
+          # Qt6
+          - toolkit: qt6
+            arch: x86_64
+            apt_arch: amd64
+            appimage_arch: x86_64
+            appimagetool_arch: x86_64
+            qemu: false
+          - toolkit: qt6
+            arch: aarch64
+            apt_arch: arm64
+            appimage_arch: aarch64
+            appimagetool_arch: aarch64
             qemu: true
     runs-on: ubuntu-24.04
     permissions:
@@ -52,14 +97,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/appimagetool.AppImage
-          key: appimagetool-${{ matrix.arch }}
+          key: appimagetool-${{ matrix.appimagetool_arch }}
 
       - name: 💾 Cache AppImage runtime
         id: cache-runtime
         uses: actions/cache@v4
         with:
-          path: ~/AppImageKit-runtime-${{ matrix.arch }}
-          key: AppImageKit-runtime-${{ matrix.arch }}
+          path: ~/AppImageKit-runtime-${{ matrix.appimage_arch }}
+          key: AppImageKit-runtime-${{ matrix.appimage_arch }}
 
       - name: 📦 Установить AppImageBuilder
         run: |
@@ -76,7 +121,7 @@ jobs:
         if: steps.cache-runtime.outputs.cache-hit == 'true'
         run: |
           mkdir -p ~/.cache/appimage-builder
-          cp ~/AppImageKit-runtime-${{ matrix.arch }} ~/.cache/appimage-builder/runtime-${{ matrix.arch }}
+          cp ~/AppImageKit-runtime-${{ matrix.appimage_arch }} ~/.cache/appimage-builder/runtime-${{ matrix.appimage_arch }}
 
       - name: 🔍 Определить версию Double Commander
         id: get_dc_version
@@ -92,40 +137,48 @@ jobs:
           echo "✅ Версия Double Commander: $DC_VERSION"
           echo "dc_version=$DC_VERSION" >> $GITHUB_OUTPUT
 
-      - name: 🛠️ Подготовить AppImageBuilder.yml для текущей архитектуры
+      - name: 🛠️ Подготовить AppImageBuilder.yml для текущей связки тулкит+архитектура
         run: |
-          cp AppImageBuilder.yml AppImageBuilder-${{ matrix.arch }}.yml
-          # Версия: latest → реальная
-          sed -i "s/version: latest/version: ${{ steps.get_dc_version.outputs.dc_version }}/" AppImageBuilder-${{ matrix.arch }}.yml
+          VER="${{ steps.get_dc_version.outputs.dc_version }}"
+          RECIPE="AppImageBuilder-${{ matrix.toolkit }}-${{ matrix.arch }}.yml"
+          cp AppImageBuilder.yml "$RECIPE"
+          # Версия: latest → реальная (в app_info и в file_name)
+          sed -i "s/version: latest/version: $VER/" "$RECIPE"
+          sed -i "s/DoubleCommander-latest-/DoubleCommander-$VER-/" "$RECIPE"
+          # Тулкит (id и file_name)
+          sed -i "s/__TOOLKIT__/${{ matrix.toolkit }}/g" "$RECIPE"
+          # Паттерн скачивания tar.xz: qt6.x86_64 → <toolkit>.<arch>
+          sed -i "s/qt6\.x86_64/${{ matrix.toolkit }}.${{ matrix.arch }}/g" "$RECIPE"
           # apt arch
-          sed -i "s/arch: amd64/arch: ${{ matrix.apt_arch }}/" AppImageBuilder-${{ matrix.arch }}.yml
-          # AppImage arch
-          sed -i "s/arch: x86_64/arch: ${{ matrix.arch }}/" AppImageBuilder-${{ matrix.arch }}.yml
-          # Для aarch64: паттерн скачивания и apt source
+          sed -i "s/arch: amd64/arch: ${{ matrix.apt_arch }}/" "$RECIPE"
+          # AppImage runtime arch (для i386 → i686)
+          sed -i "s/arch: x86_64/arch: ${{ matrix.appimage_arch }}/" "$RECIPE"
+          # Архитектура в имени итогового файла
+          sed -i "s/-x86_64\.AppImage/-${{ matrix.arch }}.AppImage/" "$RECIPE"
+          # Для aarch64: apt source
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
-            sed -i "s/qt6\.x86_64/qt6.aarch64/g" AppImageBuilder-${{ matrix.arch }}.yml
-            sed -i "s|http://archive.ubuntu.com/ubuntu/|http://ports.ubuntu.com/ubuntu-ports/|g" AppImageBuilder-${{ matrix.arch }}.yml
+            sed -i "s|http://archive.ubuntu.com/ubuntu/|http://ports.ubuntu.com/ubuntu-ports/|g" "$RECIPE"
           fi
           echo "📄 Итоговый конфиг:"
-          cat AppImageBuilder-${{ matrix.arch }}.yml
+          cat "$RECIPE"
 
       - name: 🔨 Build Double Commander AppImage
         run: |
-          appimage-builder --recipe AppImageBuilder-${{ matrix.arch }}.yml --skip-test
+          appimage-builder --recipe AppImageBuilder-${{ matrix.toolkit }}-${{ matrix.arch }}.yml --skip-test
 
       - name: 💾 Сохранить appimagetool в кэш
         if: steps.cache-appimagetool.outputs.cache-hit != 'true'
         run: |
           if [ ! -f ~/appimagetool.AppImage ]; then
-            wget -O ~/appimagetool.AppImage "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage"
+            wget -O ~/appimagetool.AppImage "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${{ matrix.appimagetool_arch }}.AppImage"
             chmod +x ~/appimagetool.AppImage
           fi
 
       - name: 💾 Сохранить runtime в кэш
         if: steps.cache-runtime.outputs.cache-hit != 'true'
         run: |
-          if [ -f ~/.cache/appimage-builder/runtime-${{ matrix.arch }} ]; then
-            cp ~/.cache/appimage-builder/runtime-${{ matrix.arch }} ~/AppImageKit-runtime-${{ matrix.arch }}
+          if [ -f ~/.cache/appimage-builder/runtime-${{ matrix.appimage_arch }} ]; then
+            cp ~/.cache/appimage-builder/runtime-${{ matrix.appimage_arch }} ~/AppImageKit-runtime-${{ matrix.appimage_arch }}
           fi
 
       - name: 🐞 Debug - List files after build
@@ -136,7 +189,7 @@ jobs:
       - name: 📤 Upload AppImage Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DoubleCommander-AppImage-${{ matrix.arch }}
+          name: DoubleCommander-AppImage-${{ matrix.toolkit }}-${{ matrix.arch }}
           path: "*.AppImage"
 
   release:
@@ -146,56 +199,42 @@ jobs:
       contents: write
 
     steps:
-      - name: 📥 Download x86_64 artifact
+      - name: 📥 Download all AppImage artifacts
         uses: actions/download-artifact@v4
         with:
-          name: DoubleCommander-AppImage-x86_64
-          path: ./artifacts/x86_64
-
-      - name: 📥 Download aarch64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: DoubleCommander-AppImage-aarch64
-          path: ./artifacts/aarch64
+          pattern: DoubleCommander-AppImage-*
+          path: ./artifacts
+          merge-multiple: true
 
       - name: 🔖 Prepare release files and notes
         id: prep
         run: |
-          FILE_X86=$(find ./artifacts/x86_64 -name "*.AppImage" | head -1)
-          FILE_ARM=$(find ./artifacts/aarch64 -name "*.AppImage" | head -1)
-
-          echo "file_x86=$FILE_X86" >> $GITHUB_OUTPUT
-          echo "file_arm=$FILE_ARM" >> $GITHUB_OUTPUT
-
-          # Версия DC из имени файла: DoubleCommander-0.9.10-x86_64.AppImage
-          DC_VERSION=$(basename "$FILE_X86" | grep -oP '(?<=DoubleCommander-)[0-9]+\.[0-9]+\.[0-9]+')
+          FIRST=$(find ./artifacts -name "*.AppImage" | head -1)
+          DC_VERSION=$(basename "$FIRST" | grep -oP '(?<=DoubleCommander-)[0-9]+\.[0-9]+\.[0-9]+')
           echo "dc_version=$DC_VERSION" >> $GITHUB_OUTPUT
-
-          NAME_X86=$(basename "$FILE_X86")
-          NAME_ARM=$(basename "$FILE_ARM")
-          SIZE_X86=$(du -h "$FILE_X86" | cut -f1)
-          SIZE_ARM=$(du -h "$FILE_ARM" | cut -f1)
-
-          cat >> $GITHUB_OUTPUT << EOF
-          notes<<NOTES
-          ## 📦 Double Commander $DC_VERSION — AppImage
-
-          | Файл | Архитектура | Размер |
-          |---|---|---|
-          | $NAME_X86 | x86\_64 (amd64) | $SIZE_X86 |
-          | $NAME_ARM | aarch64 (arm64) | $SIZE_ARM |
-
-          > Сборка выполнена автоматически через GitHub Actions + AppImageBuilder.
-          NOTES
-          EOF
+          {
+            echo "notes<<NOTES"
+            echo "## 📦 Double Commander $DC_VERSION — AppImage"
+            echo ""
+            echo "| Файл | Тулкит | Архитектура | Размер |"
+            echo "|---|---|---|---|"
+            for f in ./artifacts/*.AppImage; do
+              NAME=$(basename "$f")
+              SIZE=$(du -h "$f" | cut -f1)
+              TK=$(echo "$NAME" | sed -E 's/^DoubleCommander-[0-9.]+-([a-z0-9]+)-[a-z0-9_]+\.AppImage$/\1/')
+              AR=$(echo "$NAME" | sed -E 's/^DoubleCommander-[0-9.]+-[a-z0-9]+-([a-z0-9_]+)\.AppImage$/\1/')
+              echo "| $NAME | $TK | $AR | $SIZE |"
+            done
+            echo ""
+            echo "> Сборка выполнена автоматически через GitHub Actions + AppImageBuilder."
+            echo "NOTES"
+          } >> $GITHUB_OUTPUT
 
       - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.prep.outputs.dc_version }}
-          files: |
-            ${{ steps.prep.outputs.file_x86 }}
-            ${{ steps.prep.outputs.file_arm }}
+          files: ./artifacts/*.AppImage
           body: ${{ steps.prep.outputs.notes }}
           draft: false
           prerelease: false
