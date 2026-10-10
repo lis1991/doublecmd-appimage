@@ -7,7 +7,7 @@ script:
 
   - |
     echo "Поиск последней версии Double Commander через RSS..."
-    # Исправлено: Убраны лишние пробелы в URL внутри grep
+    # Шаблон qt6.x86_64 заменяется workflow'ом на <toolkit>.<arch>
     LATEST_URL=$(curl -s "https://sourceforge.net/projects/doublecmd/rss?path=/" | \
     grep -o '<link>https://sourceforge.net/projects/doublecmd/files/[^"]*doublecmd-[0-9.]*\.qt6\.x86_64\.tar\.xz/download' | \
     head -1 | sed 's/<link>//')
@@ -40,30 +40,24 @@ script:
     else
       echo "✍️ Создаем .desktop файл"
       mkdir -p "$(dirname "$DESKTOP_FILE")"
-      # Используем printf для создания .desktop файла
       printf "[Desktop Entry]\nVersion=1.0\nType=Application\nName=Double Commander\nComment=Cross Platform Open Source file manager\nExec=doublecmd %%F\nIcon=doublecmd\nTerminal=false\nCategories=Utility;FileTools;FileManager;\nMimeType=inode/directory;\nStartupNotify=true\n" > "$DESKTOP_FILE"
     fi
 
 AppDir:
   path: ./AppDir
   app_info:
-    id: org.doublecmd.DoubleCommander
+    id: org.doublecmd.DoubleCommander.__TOOLKIT__
     name: DoubleCommander
     icon: doublecmd
     version: latest
     exec: usr/bin/doublecmd
-  # Исправлено: Добавлен обязательный ключ 'include:' даже с пустым списком
   apt:
     arch: amd64
     sources:
       - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy main universe
     include: []
-    # Если в будущем потребуется добавить зависимости вручную, список будет таким:
-    # include:
-    #   - libgl1
-    #   - libx11-6
-    #   - и т.д.
 
 AppImage:
   arch: x86_64
+  file_name: DoubleCommander-latest-__TOOLKIT__-x86_64.AppImage
   sign-key: None
